@@ -1,2 +1,4 @@
+*.gdb_history
 *.swp
 *.out
+*.txt
