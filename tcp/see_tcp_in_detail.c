@@ -2,21 +2,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
-#include <netinet/if_ether.h>
-#include <netinet/ether.h>
-#include <net/ethernet.h>
+#include <netinet/ip.h>        // For IP header
+#include <netinet/tcp.h>       // For TCP header and flags
+#include <arpa/inet.h>         // For inet_ntoa
+#include <netinet/if_ether.h>  // For Ethernet header
+#include <netinet/ether.h>     // For Ethernet utilities
+#include <net/ethernet.h>      // For Ethernet header definitions
+#include <netinet/in.h>        // For IPPROTO_TCP
 
-#ifndef U_CHAR
-typedef unsigned char UChar;
-#endif
-
-void printPayload(const UChar *payload, int len) {
+// Display payload data in both hex and ASCII format
+void printPayload(const unsigned char *payload, int len) {
     int i;
 
     for (i = 0; i < len; i += 8) {
+        // Print hex data
         printf("\n  ");
         for (int j = 0; j < 8; j++) {
             if (i + j < len) {
@@ -25,6 +24,9 @@ void printPayload(const UChar *payload, int len) {
                 printf("   ");
             }
         }
+
+        // Print ASCII data corresponding to hex data
+        // Print only ASCII-printable characters among the payload data
         printf("| ");
         for (int j = 0; j < 8; j++) {
             if (i + j < len) {
@@ -39,12 +41,14 @@ void printPayload(const UChar *payload, int len) {
     printf("\n");
 }
 
-void packetHandler(UChar *userData, const struct pcap_pkthdr *packetHeader, const UChar *packet) {
+void packetHandler(unsigned char *userData, const struct pcap_pkthdr *packetHeader, const unsigned char *packet) {
+    // Consider TCP packets are included in the IP header(encapsulation)
     struct ip *ipHeader;
     struct tcphdr *tcpHeader;
-    u_int ipHeaderLength;
-    u_int tcpHeaderLength;
+    unsigned int ipHeaderLength;
+    unsigned int tcpHeaderLength;
 
+    // Ethernet header is 14 bytes long
     ipHeader = (struct ip *)(packet + 14);
     ipHeaderLength = ipHeader->ip_hl * 4;
 
@@ -74,7 +78,7 @@ void packetHandler(UChar *userData, const struct pcap_pkthdr *packetHeader, cons
     printf("  Checksum: 0x%04x\n", ntohs(tcpHeader->th_sum));
     printf("  Urgent Pointer: %d\n", tcpHeader->th_urp);
 
-    const UChar *payload = packet + 14 + ipHeaderLength + tcpHeaderLength;
+    const unsigned char *payload = packet + 14 + ipHeaderLength + tcpHeaderLength;
     int payloadSize = packetHeader->len - (14 + ipHeaderLength + tcpHeaderLength);
 
     printf("  Payload Size: %d bytes\n", payloadSize);
@@ -98,17 +102,21 @@ int main(int argc, char *argv[]) {
     char errBuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle;
 
+    // Open the network device for packet capture
     handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errBuf);
     if (handle == NULL) {
         fprintf(stderr, "Could not open device %s: %s\n", dev, errBuf);
         return 2;
     }
 
+    // Compile the filter expression
     struct bpf_program filterProgram;
     if (pcap_compile(handle, &filterProgram, "tcp", 0, PCAP_NETMASK_UNKNOWN) == -1) {
         fprintf(stderr, "Could not parse filter: %s\n", pcap_geterr(handle));
         return 2;
     }
+
+    // Set the filter for the compiled program
     if (pcap_setfilter(handle, &filterProgram) == -1) {
         fprintf(stderr, "Could not install filter: %s\n", pcap_geterr(handle));
         return 2;
@@ -116,6 +124,7 @@ int main(int argc, char *argv[]) {
 
     printf("Listening on device: %s\n", dev);
 
+    // Start capturing packets with the custom packet handler as a callback function
     pcap_loop(handle, 0, packetHandler, NULL);
 
     pcap_close(handle);
